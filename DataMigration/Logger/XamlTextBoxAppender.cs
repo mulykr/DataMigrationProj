@@ -4,9 +4,8 @@ using System.Windows.Controls;
 
 namespace DataMigration.Logger
 {
-    class XamlTextBoxAppender
+    public class XamlTextBoxAppender
     {
-        private static object locker = new object();
         public XamlTextBoxAppender(TextBox textBox)
         {
             TextBox = textBox;
@@ -30,7 +29,7 @@ namespace DataMigration.Logger
             result += DateTime.Now.ToShortDateString();
             result += ConfigurationManager.AppSettings["separator"];
             result += DateTime.Now.ToLongTimeString();
-            result += ConfigurationManager.AppSettings["ConfigurationManager.AppSettings"];
+            result += ConfigurationManager.AppSettings["lineSeparator"];
             result += logArg.Level;
             result += ConfigurationManager.AppSettings["levelMessageSeparator"];
             result += logArg.Message;

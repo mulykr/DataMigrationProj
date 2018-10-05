@@ -1,35 +1,30 @@
 ﻿using System;
 using System.Text;
+using DataMigration.Logger;
+using DataMigration.Logger.Enums;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 
 namespace DataMigration.Models
 {
-    using Logger;
-    using Logger.Enums;
-    class RabbitMqClient : ILogSupporting, IDisposable
+    public class RabbitMqClient : ILogSupporting
     {
-        private readonly string _host;
-        private readonly string _vhost;
-        private ConnectionFactory _connectionFactory;
+        private readonly ConnectionFactory _connectionFactory;
+
         public event MakeLog LogEventHappened;
 
         public RabbitMqClient(string host, string vhost)
         {
-            _host = host;
-            _vhost = vhost;
-            _connectionFactory = new ConnectionFactory();
-            _connectionFactory.Uri = new Uri(_host);
-            _connectionFactory.VirtualHost = _vhost;
+            _connectionFactory = new ConnectionFactory
+            {
+                Uri = new Uri(host),
+                VirtualHost = vhost
+            };
         }
 
         private void DebugLog(string message)
         {
             LogEventHappened?.Invoke(message, LogLevel.Debug);
-        }
-        private void ErrorLog(string message)
-        {
-            LogEventHappened?.Invoke(message, LogLevel.Error);
         }
         
         public void CreateQueue(IModel channel, string name, bool durable = false, bool autoDelete = false)
@@ -43,6 +38,7 @@ namespace DataMigration.Models
 
         public void PublishMessageToQueue(string queueName, string message, string routingKey)
         {
+            DebugLog("Publishing message to queue...");
             using (var connection = _connectionFactory.CreateConnection())
             {
                 using (var channel = connection.CreateModel())
@@ -57,10 +53,12 @@ namespace DataMigration.Models
                                          body: body);
                 }
             }
+            DebugLog("Message was sent. Success!");
         }
 
         public void ConsumeMessageFromQueue(string queueName, EventHandler<BasicDeliverEventArgs> handler)
         {
+            DebugLog("Consuming message from queue...");
             using (var connection = _connectionFactory.CreateConnection())
             {
                 using (var channel = connection.CreateModel())
@@ -75,10 +73,7 @@ namespace DataMigration.Models
                     System.Threading.Thread.Sleep(1000);
                 }
             }
-        }
-
-        public void Dispose()
-        {
+            DebugLog("Success!");
         }
     }
 }

@@ -1,11 +1,11 @@
-﻿using DataMigration.Logger.Enums;
-using System.Windows.Controls;
+﻿using System.Windows.Controls;
+using DataMigration.Logger.Enums;
 
 namespace DataMigration.Logger
 {
-    class XamlTextBoxLogger : ILogger
+    public class XamlTextBoxLogger : ILogger
     {
-        private XamlTextBoxAppender _appender;
+        private readonly XamlTextBoxAppender _appender;
 
         public XamlTextBoxLogger(TextBox textBox)
         {

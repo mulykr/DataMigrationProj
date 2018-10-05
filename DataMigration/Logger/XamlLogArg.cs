@@ -1,8 +1,8 @@
-﻿namespace DataMigration.Logger
-{
-    using Enums;
+﻿using DataMigration.Logger.Enums;
 
-    class XamlLogArg
+namespace DataMigration.Logger
+{
+    public class XamlLogArg
     {
         public string Message { get; set; }
         public LogLevel Level { get; set; }

@@ -3,11 +3,6 @@
 
     public class HistoricalOcrData
     {
-        public HistoricalOcrData()
-        {
-
-        }
-
         public HistoricalOcrData(int tenantId, string fullFilePath, int statusId, string errorMessage, string data, object createdAt, object updatedAt)
         {
             TenantId = tenantId;

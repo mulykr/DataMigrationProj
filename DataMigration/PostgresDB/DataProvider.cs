@@ -1,14 +1,14 @@
-﻿using System.Text;
+﻿using System;
+using System.Text;
 using System.Collections.Generic;
 using DataMigration.PostgresDB.Entities;
+using DataMigration.Logger;
+using DataMigration.Logger.Enums;
 using Npgsql;
 
 namespace DataMigration.PostgresDB
 {
-    using Logger;
-    using Logger.Enums;
-
-    partial class DataProvider : IDataProvider, ILogSupporting
+    internal class DataProvider : IDataProvider, ILogSupporting
     {
         private readonly string _connectionString;
 
@@ -16,57 +16,67 @@ namespace DataMigration.PostgresDB
         {
             LogEventHappened?.Invoke($"Creating new DataProvider. Connection string: {connectionString}", LogLevel.Debug);
             _connectionString = connectionString;
-            LogEventHappened?.Invoke($"Opening connection...", LogLevel.Debug);
-            LogEventHappened?.Invoke($"Connection opened!", LogLevel.Debug);
         }
 
         public event MakeLog LogEventHappened;
 
         public  NpgsqlConnection GetOpenedConnection()
         {
-            LogEventHappened("Creating and opening new connection to Postgres Db...", LogLevel.Debug);
+            LogEventHappened?.Invoke("Creating and opening new connection to Postgres Db...", LogLevel.Debug);
             var connection = new NpgsqlConnection(_connectionString);
             connection.Open();
-            LogEventHappened("Success! Connection opened!", LogLevel.Debug);
+            LogEventHappened?.Invoke("Success! Connection opened!", LogLevel.Debug);
             return connection;
         }
 
         public List<HistoricalOcrData> GetHistoricalOcrData(int? count = null, bool deleteAfterSelect = false)
         {
-            LogEventHappened?.Invoke($"Started getting historical ocr data. Count:  {(count == null ? "all" : count.ToString())}", LogLevel.Debug);
+            if (count != null && count < 0)
+            {
+                throw new ArgumentException($"Cannot select data in count less than 0. Count: {count}");
+            }
 
             string commandText = "SELECT * FROM historical_ocr_data";
             if (count != null)
             {
-                commandText += string.Format(" LIMIT {0}", count);
+                commandText += $" LIMIT {count}";
             }
 
-            List<HistoricalOcrData> result = new List<HistoricalOcrData>();
+            LogEventHappened?.Invoke($"Started getting historical ocr data. Count:  {(count == null ? "all" : count.ToString())}", LogLevel.Debug);
+
+            var result = new List<HistoricalOcrData>();
+            if (count == 0)
+            {
+                return result;
+            }
 
             using (var connection = GetOpenedConnection())
-            using (var command = new NpgsqlCommand(commandText, connection))
             {
-                LogEventHappened?.Invoke($"Executing query...", LogLevel.Debug);
-                NpgsqlDataReader reader = command.ExecuteReader();
-                LogEventHappened?.Invoke($"Done!", LogLevel.Debug);
-                while (reader.Read())
+                using (var command = new NpgsqlCommand(commandText, connection))
                 {
-                    int tenantId = reader.GetInt32(0);
-                    string fullFilePath = reader.GetString(1);
-                    int statusId = reader.GetInt32(2);
-                    string errorMessage = reader.GetValue(3)?.ToString();
-                    string data = reader.GetString(4);
-                    object createdAt = reader.GetValue(5);
-                    object updatedAt = reader.GetValue(6);
-                    result.Add(new HistoricalOcrData(tenantId, fullFilePath, statusId, errorMessage, data, createdAt, updatedAt));
+                    LogEventHappened?.Invoke("Executing query...", LogLevel.Debug);
+                    var reader = command.ExecuteReader();
+                    LogEventHappened?.Invoke("Done!", LogLevel.Debug);
+                    while (reader.Read())
+                    {
+                        int tenantId = reader.GetInt32(0);
+                        string fullFilePath = reader.GetString(1);
+                        int statusId = reader.GetInt32(2);
+                        string errorMessage = reader.GetValue(3)?.ToString();
+                        string data = reader.GetString(4);
+                        object createdAt = reader.GetValue(5);
+                        object updatedAt = reader.GetValue(6);
+                        result.Add(new HistoricalOcrData(tenantId, fullFilePath, statusId, errorMessage, data,
+                            createdAt, updatedAt));
+                    }
                 }
             }
-
 
             LogEventHappened?.Invoke($"Data is successfully selected! Actual total count: {result.Count}", LogLevel.Debug);
             if (deleteAfterSelect)
             {
-                DeleteData(result);
+                int affected = DeleteData(result);
+                LogEventHappened?.Invoke($"Removed {affected} rows!", LogLevel.Debug);
             }
 
             return result;
@@ -75,16 +85,8 @@ namespace DataMigration.PostgresDB
         public int InsertHistoricalOcrData(HistoricalOcrData dataToInsert)
         {
             LogEventHappened?.Invoke("Inserting data...", LogLevel.Debug);
-            string commandText = string.Format("INSERT INTO historical_ocr_data(tenantId, fullFilePath, statusId, errorMessage, data, createdAt, updatedAt) VALUES ({0}, '{1}', {2}, {3}, '{4}', '{5}', '{6}')",
-                                    dataToInsert.TenantId,
-                                    dataToInsert.FullFilePath,
-                                    dataToInsert.StatusId,
-                                    string.IsNullOrEmpty(dataToInsert.ErrorMessage) ? "null" : dataToInsert.ErrorMessage,
-                                    NormalizeJsonData(dataToInsert.Data),
-                                    dataToInsert.CreatedAt,
-                                    dataToInsert.UpdatedAt);
-
-
+            string commandText = $"INSERT INTO historical_ocr_data(tenantId, fullFilePath, statusId, errorMessage, data, createdAt, updatedAt) VALUES ({dataToInsert.TenantId}, '{dataToInsert.FullFilePath}', {dataToInsert.StatusId}, {(string.IsNullOrEmpty(dataToInsert.ErrorMessage) ? "null" : dataToInsert.ErrorMessage)}, '{NormalizeJsonData(dataToInsert.Data)}', '{dataToInsert.CreatedAt}', '{dataToInsert.UpdatedAt}')";
+            
             int affected;
             using (var command = new NpgsqlCommand(commandText, GetOpenedConnection()))
             {
@@ -123,55 +125,35 @@ namespace DataMigration.PostgresDB
             return affected;
         }
 
-        private string GetInsertQueryString(IList<HistoricalOcrData> dataToInsert)
+        private static string GetInsertQueryString(IList<HistoricalOcrData> dataToInsert)
         {
-            string commandText = "INSERT INTO historical_ocr_data VALUES ";
-            StringBuilder sb = new StringBuilder(commandText);
+            var commandText = "INSERT INTO historical_ocr_data VALUES ";
+            var sb = new StringBuilder(commandText);
 
-            for (int i = 0; i < dataToInsert.Count - 1; i++)
+            foreach (var item in dataToInsert)
             {
-                sb.Append(string.Format("({0}, '{1}', {2}, {3}, '{4}', '{5}', '{6}'), ",
-                                    dataToInsert[i].TenantId,
-                                    dataToInsert[i].FullFilePath,
-                                    dataToInsert[i].StatusId,
-                                    string.IsNullOrEmpty(dataToInsert[i].ErrorMessage) ? "null" : dataToInsert[i].ErrorMessage,
-                                    NormalizeJsonData(dataToInsert[i].Data),
-                                    dataToInsert[i].CreatedAt,
-                                    dataToInsert[i].UpdatedAt));
+                sb.Append($"({item.TenantId}, '{item.FullFilePath}', {item.StatusId}, {(string.IsNullOrEmpty(item.ErrorMessage) ? "null" : item.ErrorMessage)}, '{NormalizeJsonData(item.Data)}', '{item.CreatedAt}', '{item.UpdatedAt}'), ");
             }
 
-            int lastIndex = dataToInsert.Count - 1;
-            sb.Append(string.Format("({0}, '{1}', {2}, {3}, '{4}', '{5}', '{6}')",
-                                    dataToInsert[lastIndex].TenantId,
-                                    dataToInsert[lastIndex].FullFilePath,
-                                    dataToInsert[lastIndex].StatusId,
-                                    string.IsNullOrEmpty(dataToInsert[lastIndex].ErrorMessage) ? "null" : dataToInsert[lastIndex].ErrorMessage,
-                                    NormalizeJsonData(dataToInsert[lastIndex].Data),
-                                    dataToInsert[lastIndex].CreatedAt,
-                                    dataToInsert[lastIndex].UpdatedAt));
+            sb = sb.Remove(sb.Length - 2, 2);
             return sb.ToString();
         }
 
-        private string GetQueryStringToRemoveData(IList<HistoricalOcrData> toDelete)
+        private static string GetQueryStringToRemoveData(IList<HistoricalOcrData> toDelete)
         {
-            string commandText = "DELETE FROM historical_ocr_data WHERE ";
-            StringBuilder sb = new StringBuilder(commandText);
+            const string commandText = "DELETE FROM historical_ocr_data WHERE ";
+            var sb = new StringBuilder(commandText);
 
-            for (int i = 0; i < toDelete.Count - 1; i++)
+            foreach (var item in toDelete)
             {
-                sb.Append(string.Format("(tenantid = {0} AND fullfilepath = '{1}') OR ",
-                                    toDelete[i].TenantId,
-                                    toDelete[i].FullFilePath));
+                sb.Append($"(tenantid = {item.TenantId} AND fullfilepath = '{item.FullFilePath}') OR ");
             }
 
-            int lastIndex = toDelete.Count - 1;
-            sb.Append(string.Format("(tenantid = {0} AND fullfilepath = '{1}')",
-                                    toDelete[lastIndex].TenantId,
-                                    toDelete[lastIndex].FullFilePath));
+            sb = sb.Remove(sb.Length - 4, 4);
             return sb.ToString();
         }
 
-        private string NormalizeJsonData(string data)
+        private static string NormalizeJsonData(string data)
         {
             return data.Replace('\'', '.');
         }
