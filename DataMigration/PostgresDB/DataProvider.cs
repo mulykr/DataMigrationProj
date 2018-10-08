@@ -8,7 +8,7 @@ using Npgsql;
 
 namespace DataMigration.PostgresDB
 {
-    internal class DataProvider : IDataProvider, ILogSupporting
+    public class DataProvider : IDataProvider, ILogSupporting
     {
         private readonly string _connectionString;
 
@@ -73,7 +73,7 @@ namespace DataMigration.PostgresDB
             }
 
             LogEventHappened?.Invoke($"Data is successfully selected! Actual total count: {result.Count}", LogLevel.Debug);
-            if (deleteAfterSelect)
+            if (deleteAfterSelect && result.Count != 0)
             {
                 int affected = DeleteData(result);
                 LogEventHappened?.Invoke($"Removed {affected} rows!", LogLevel.Debug);

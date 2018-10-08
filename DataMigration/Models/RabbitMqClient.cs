@@ -38,7 +38,6 @@ namespace DataMigration.Models
 
         public void PublishMessageToQueue(string queueName, string message, string routingKey)
         {
-            DebugLog("Publishing message to queue...");
             using (var connection = _connectionFactory.CreateConnection())
             {
                 using (var channel = connection.CreateModel())
@@ -53,7 +52,6 @@ namespace DataMigration.Models
                                          body: body);
                 }
             }
-            DebugLog("Message was sent. Success!");
         }
 
         public void ConsumeMessageFromQueue(string queueName, EventHandler<BasicDeliverEventArgs> handler)
