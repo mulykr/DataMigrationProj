@@ -66,8 +66,7 @@ namespace DataMigration.PostgresDB
                         string data = reader.GetString(4);
                         object createdAt = reader.GetValue(5);
                         object updatedAt = reader.GetValue(6);
-                        result.Add(new HistoricalOcrData(tenantId, fullFilePath, statusId, errorMessage, data,
-                            createdAt, updatedAt));
+                        result.Add(new HistoricalOcrData { TenantId = tenantId, FullFilePath = fullFilePath, StatusId = statusId, ErrorMessage = errorMessage, Data = data, CreatedAt = createdAt, UpdatedAt = updatedAt });
                     }
                 }
             }
