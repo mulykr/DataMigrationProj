@@ -12,20 +12,21 @@ namespace DataMigration.Logger
         }
 
         public TextBox TextBox { get; set; }
-
-
+        
         public void Append(XamlLogArg logArg)
         {
-            if (TextBox != null && logArg != null)
+            if (TextBox == null || logArg == null)
             {
-                string log = GetFormattedLog(logArg);
-                TextBox.AppendText(log);
+                return;
             }
+
+            var log = GetFormattedLog(logArg);
+            TextBox.AppendText(log);
         }
 
-        private string GetFormattedLog(XamlLogArg logArg)
+        private static string GetFormattedLog(XamlLogArg logArg)
         {
-            string result = string.Empty;
+            var result = string.Empty;
             result += DateTime.Now.ToShortDateString();
             result += ConfigurationManager.AppSettings["separator"];
             result += DateTime.Now.ToLongTimeString();

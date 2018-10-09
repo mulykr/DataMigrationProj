@@ -1,20 +1,22 @@
-﻿using System.Windows.Controls;
+﻿using System.Threading.Tasks;
 using DataMigration.Logger.Enums;
 
 namespace DataMigration.Logger
 {
-    public class XamlTextBoxLogger : ILogger
+    public class XamlTextBoxLogger
     {
         private readonly XamlTextBoxAppender _appender;
+        private readonly MainWindow _window;
 
-        public XamlTextBoxLogger(TextBox textBox)
+        public XamlTextBoxLogger(MainWindow window)
         {
-            _appender = new XamlTextBoxAppender(textBox);
+            _window = window;
+            _appender = new XamlTextBoxAppender(_window.LogTextBox);
         }
 
-        public void Log(string message, LogLevel level)
+        public async void Log(string message, LogLevel level)
         {
-            _appender.Append(new XamlLogArg(message, level));
+            await Task.Run(() => _window.Dispatcher.Invoke(() => _appender.Append(new XamlLogArg(message, level))));
         }
     }
 }
