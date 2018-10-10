@@ -100,8 +100,7 @@ namespace DataMigration
 
                     data = _dataProvider.GetHistoricalOcrData(amountToGet);
                 }
-
-
+                
                 _logger.Log("Consuming messages from Rabbit", LogLevel.Debug);
                 _rabbitConsumer.ConsumeMessagesFromQueue(queueName, ReceiveMessage);
             }
@@ -142,7 +141,7 @@ namespace DataMigration
         {
             _rabbitConsumer?.Dispose();
             _rabbitProducer?.Dispose();
-            MessageBox.Show("Bye!");
+            MessageBox.Show("Finished! Connections are disposed!");
         }
     }
 }

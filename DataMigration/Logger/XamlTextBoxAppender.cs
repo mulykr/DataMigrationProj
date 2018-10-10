@@ -22,6 +22,7 @@ namespace DataMigration.Logger
 
             var log = GetFormattedLog(logArg);
             TextBox.AppendText(log);
+            TextBox.ScrollToEnd();
         }
 
         private static string GetFormattedLog(XamlLogArg logArg)
