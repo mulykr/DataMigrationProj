@@ -97,8 +97,9 @@
     </Compile>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Models\RabbitMqConsumer.cs" />
+    <Compile Include="Models\RabbitMqProducer.cs" />
     <Compile Include="PostgresDB\DataProvider.cs" />
-    <Compile Include="Models\RabbitMqClient.cs" />
     <Compile Include="PostgresDB\Entities\HistoricalOcrData.cs" />
     <Compile Include="Properties\AssemblyInfo.cs">
       <SubType>Code</SubType>

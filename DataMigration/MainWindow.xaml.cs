@@ -1,16 +1,18 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel;
+using System.Configuration;
 using System.Linq;
 using System.Text;
+using System.Threading.Tasks;
 using System.Windows;
-using System.Configuration;
 using DataMigration.Logger;
 using DataMigration.Logger.Enums;
 using DataMigration.Models;
 using DataMigration.PostgresDB;
 using DataMigration.PostgresDB.Entities;
-using RabbitMQ.Client.Events;
 using Newtonsoft.Json;
+using RabbitMQ.Client.Events;
 
 namespace DataMigration
 {
@@ -22,38 +24,63 @@ namespace DataMigration
         private readonly XamlTextBoxLogger _logger;
         private readonly DataProvider _dataProvider;
         private readonly DataProvider _dataProviderDocker;
+        private readonly RabbitMqProducer _rabbitProducer;
+        private readonly RabbitMqConsumer _rabbitConsumer;
 
 
         public MainWindow()
         {
-            InitializeComponent();
-            _logger = new XamlTextBoxLogger(this);
-            _logger.Log("=========== Logger started working! ==========", LogLevel.Info);
-
             try
             {
+                InitializeComponent();
+                _logger = new XamlTextBoxLogger(this);
+                _logger.Log("=========== Logger started working! ==========", LogLevel.Info);
                 _dataProvider = new DataProvider(ConfigurationManager.ConnectionStrings["psqlConnectionString"].ConnectionString);
                 _dataProviderDocker = new DataProvider(ConfigurationManager.ConnectionStrings["psqlDockerConnectionString"].ConnectionString);
+
+                _rabbitProducer = new RabbitMqProducer(ConfigurationManager.AppSettings["rabbitMqHost"],
+                    ConfigurationManager.AppSettings["rabbitVhost"]);
+                _rabbitConsumer = new RabbitMqConsumer(ConfigurationManager.AppSettings["rabbitMqHost"],
+                    ConfigurationManager.AppSettings["rabbitVhost"]);
+                _dataProvider.LogEventHappened += _logger.Log;
+                _dataProviderDocker.LogEventHappened += _logger.Log;
+
+                _rabbitProducer.LogEventHappened += _logger.Log;
+                _rabbitConsumer.LogEventHappened += _logger.Log;
             }
             catch (Exception e)
             {
                 _logger.Log($"Error occured while creating data providers: {e.Message}", LogLevel.Error);
             }
             
-
-            _dataProvider.LogEventHappened += _logger.Log;
-            _dataProviderDocker.LogEventHappened += _logger.Log;
-
         }
 
-        private void StartMigratingDataClick(object sender, RoutedEventArgs e)
+        private async void StartMigratingDataClick(object sender, RoutedEventArgs e)
         {
             try
             {
-                var mqClient = new RabbitMqClient(ConfigurationManager.AppSettings["rabbitMqHost"], ConfigurationManager.AppSettings["rabbitVhost"]);
-                mqClient.LogEventHappened += _logger.Log;
+                StartButton.IsEnabled = false;
+                await Task.Run(() => StartMigration()).ContinueWith((obj) =>
+                {
+                    StartButton.Dispatcher.Invoke(() =>
+                    {
+                        return StartButton.IsEnabled = true;
+                    });
+                });
+            }
+            catch (Exception exception)
+            {
+                _logger.Log(exception.Message, LogLevel.Error);
+                _logger.Log(exception.StackTrace, LogLevel.Error);
+            }
+        }
 
-                var amountToGet = int.Parse(ConfigurationManager.AppSettings["objectsPerIteration"]);
+        private void StartMigration()
+        {
+            try
+            {
+                var queueName = ConfigurationManager.AppSettings["queueName"];
+                var amountToGet = int.Parse(ConfigurationManager.AppSettings["postgresBatchSize"]);
                 var data = _dataProvider.GetHistoricalOcrData(amountToGet);
 
                 while (data.Count != 0)
@@ -61,17 +88,22 @@ namespace DataMigration
                     _logger.Log($"Processing data... Count: {data.Count}", LogLevel.Debug);
 
                     _logger.Log("Serializing data...", LogLevel.Debug);
-                    var jsonParsedData = data.Select((item) => (JsonConvert.SerializeObject(item))).ToList();
+                    var jsonParsedData = data.Select(item => (JsonConvert.SerializeObject(item))).ToList();
                     _logger.Log("Serializing successed!", LogLevel.Debug);
+                    var sentData = SendDataToRabbitMq(jsonParsedData, _rabbitProducer, queueName);
 
-                    SendDataToRabbitMq(jsonParsedData, mqClient);
-                    _dataProvider.DeleteData(data);
+                    _logger.Log($"Removing {sentData.Count} sent rows", LogLevel.Debug);
+
+                    var dataToDelete = sentData.Select(JsonConvert.DeserializeObject<HistoricalOcrData>)
+                        .ToList();
+                    _dataProvider.DeleteData(dataToDelete);
 
                     data = _dataProvider.GetHistoricalOcrData(amountToGet);
                 }
 
+
                 _logger.Log("Consuming messages from Rabbit", LogLevel.Debug);
-                mqClient.ConsumeMessagesFromQueue("data", ReceiveMessage);
+                _rabbitConsumer.ConsumeMessagesFromQueue(queueName, ReceiveMessage);
             }
             catch (Exception exc)
             {
@@ -79,22 +111,13 @@ namespace DataMigration
             }
         }
 
-        private void SendDataToRabbitMq(IReadOnlyCollection<string> data, RabbitMqClient rabbitClient)
+        private List<string> SendDataToRabbitMq(IReadOnlyCollection<string> data, RabbitMqProducer producer, string queueName)
         {
-            try
-            {
-                _logger.Log($"Sending {data.Count} serialized objects to RabbitMQ...", LogLevel.Debug);
-                foreach (var msg in data)
-                {
-                    rabbitClient.PublishMessageToQueue("data", msg, "data");
-                }
+            _logger.Log($"Sending {data.Count} serialized objects to RabbitMQ...", LogLevel.Debug);
+            var sentMessages = (from msg in data let isSent = producer.PublishMessageToQueue(queueName, msg, queueName) where isSent select msg).ToList();
 
-                _logger.Log($"{data.Count} serialized objects are sent to RabbitMQ successed!", LogLevel.Debug);
-            }
-            catch (Exception exception)
-            {
-                _logger.Log($"Cannot send data to rabbit. Error occured: {exception.Message}", LogLevel.Error);
-            }
+            _logger.Log($"{sentMessages.Count} serialized objects are sent to RabbitMQ successed!", LogLevel.Debug);
+            return sentMessages;
         }
 
         private void ReceiveMessage(object sender, BasicDeliverEventArgs e)
@@ -113,7 +136,13 @@ namespace DataMigration
             {
                 _logger.Log(exception.Message, LogLevel.Error);
             }
+        }
 
+        private void MainWindowOnClosing(object sender, CancelEventArgs e)
+        {
+            _rabbitConsumer?.Dispose();
+            _rabbitProducer?.Dispose();
+            MessageBox.Show("Bye!");
         }
     }
 }

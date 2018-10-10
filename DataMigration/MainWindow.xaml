@@ -5,9 +5,10 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:DataMigration"
         mc:Ignorable="d"
-        Title="MainWindow" Height="550" Width="1200">
+        Title="MainWindow" Height="550" Width="1200"
+        Closing="MainWindowOnClosing">
     <Grid>
-        <Button Height="50" VerticalAlignment="Top" Content="Start migrating data" FontSize="28" Foreground="White" Background="#01123a" Click="StartMigratingDataClick" Name="startButton"/>
+        <Button Height="50" VerticalAlignment="Top" Content="Start migrating data" FontSize="28" Foreground="White" Background="#01123a" Click="StartMigratingDataClick" Name="StartButton"/>
         <TextBox Height="464" VerticalAlignment="Bottom" Background="White" Foreground="#01123a" FontSize="16" Name="LogTextBox" VerticalScrollBarVisibility="Auto" ></TextBox>
     </Grid>
 </Window>
