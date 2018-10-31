@@ -139,6 +139,7 @@ namespace DataMigration.PostgresDB
             catch (Exception e)
             {
                 LogEventHappened?.Invoke(e.Message, LogLevel.Error);
+                throw;
             }
             
             return affected;

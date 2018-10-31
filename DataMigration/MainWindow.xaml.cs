@@ -121,19 +121,25 @@ namespace DataMigration
 
         private void ReceiveMessage(object sender, BasicDeliverEventArgs e)
         {
+            HistoricalOcrData histOcrData = null;
             try
             {
                 _logger.Log("Message recieved!", LogLevel.Debug);
                 var body = e.Body;
                 var message = Encoding.UTF8.GetString(body);
-                var histOcrData = JsonConvert.DeserializeObject<HistoricalOcrData>(message);
+                histOcrData = JsonConvert.DeserializeObject<HistoricalOcrData>(message);
                 _logger.Log($"Inserting data into table in Docker\'s POSTGRES... FullFilePath: {histOcrData.FullFilePath}", LogLevel.Debug);
                 var inserted = _dataProviderDocker.InsertHistoricalOcrData(histOcrData, _dataProviderDocker.Connection);
                 _logger.Log($"Success! Inserted: {inserted}", LogLevel.Debug);
             }
             catch (Exception exception)
             {
-                _logger.Log(exception.Message, LogLevel.Error);
+                if (histOcrData != null)
+                {
+                    _logger.Log("Inserting message back to the table...", LogLevel.Debug);
+                    _dataProvider.InsertHistoricalOcrData(histOcrData, _dataProvider.Connection);
+                    _logger.Log("Restored!", LogLevel.Debug);
+                }
             }
         }
 
